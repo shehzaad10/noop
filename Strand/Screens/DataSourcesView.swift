@@ -92,9 +92,11 @@ struct DataSourcesView: View {
         var allowedContentTypes: [UTType] {
             switch self {
             case .whoop:
-                return [.zip, .folder]
+                // public.zip-archive alone greys out zip files on iOS Files/iCloud Drive;
+                // public.archive (the parent UTType) must also be listed to make them selectable.
+                return [.zip, .archive, .folder]
             case .appleHealth:
-                return [.zip, .xml, .folder]
+                return [.zip, .archive, .xml, .folder]
             }
         }
     }

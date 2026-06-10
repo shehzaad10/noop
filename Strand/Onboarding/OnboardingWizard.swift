@@ -816,9 +816,11 @@ private struct ImportStep: View {
         var allowedContentTypes: [UTType] {
             switch self {
             case .whoop:
-                return [.zip, .folder]
+                // public.archive alongside public.zip-archive ensures zip files
+                // are selectable on iOS (not greyed out in Files / iCloud Drive).
+                return [.zip, .archive, .folder]
             case .appleHealth:
-                return [.zip, .xml, .folder]
+                return [.zip, .archive, .xml, .folder]
             }
         }
     }
