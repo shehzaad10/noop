@@ -8,6 +8,7 @@ struct DataSourcesView: View {
     @EnvironmentObject var live: LiveState
     @State private var showingImporter = false
     @State private var importTarget: ImportTarget = .whoop
+    @State private var fileTypeError: String? = nil
 
     var body: some View {
         ScreenScaffold(title: "Data Sources",
@@ -17,10 +18,20 @@ struct DataSourcesView: View {
             liveCard
         }
         // A single target-aware importer avoids SwiftUI collapsing competing importers on the same screen.
+        // allowedContentTypes is .item (catch-all) because UTI-based filtering greys out zip files
+        // that iCloud Drive / Files doesn't tag with a recognised UTI. Extension is validated below.
         .fileImporter(isPresented: $showingImporter,
                       allowedContentTypes: importTarget.allowedContentTypes,
                       allowsMultipleSelection: false) { result in
             handleImportResult(result, for: importTarget)
+        }
+        .alert("Wrong file type", isPresented: .init(
+            get: { fileTypeError != nil },
+            set: { if !$0 { fileTypeError = nil } }
+        )) {
+            Button("OK", role: .cancel) { fileTypeError = nil }
+        } message: {
+            if let msg = fileTypeError { Text(msg) }
         }
     }
 
@@ -77,6 +88,10 @@ struct DataSourcesView: View {
 
     private func handleImportResult(_ result: Result<[URL], Error>, for target: ImportTarget) {
         guard case .success(let urls) = result, let url = urls.first else { return }
+        guard target.isValidFile(url) else {
+            fileTypeError = "Please choose a \(target.validExtensionHint) file."
+            return
+        }
         switch target {
         case .whoop:
             model.importWhoop(url: url)
@@ -89,17 +104,26 @@ struct DataSourcesView: View {
         case whoop
         case appleHealth
 
-        var allowedContentTypes: [UTType] {
+        // Accept all items — UTI filtering greys out zip files from iCloud Drive / Files because
+        // the OS doesn't tag them with a recognised archive UTI. Extension is checked after pick.
+        var allowedContentTypes: [UTType] { [.item] }
+
+        func isValidFile(_ url: URL) -> Bool {
+            let ext = url.pathExtension.lowercased()
             switch self {
-            case .whoop:
-                // public.zip-archive alone greys out zip files on iOS Files/iCloud Drive;
-                // public.archive (the parent UTType) must also be listed to make them selectable.
-                return [.zip, .archive, .folder]
-            case .appleHealth:
-                return [.zip, .archive, .xml, .folder]
+            case .whoop:       return ext == "zip" || url.hasDirectoryPath
+            case .appleHealth: return ext == "zip" || ext == "xml" || url.hasDirectoryPath
+            }
+        }
+
+        var validExtensionHint: String {
+            switch self {
+            case .whoop:       return ".zip"
+            case .appleHealth: return ".zip or .xml"
             }
         }
     }
+
     private var liveCard: some View {
         card(title: "WHOOP Strap (Live BLE)", icon: "antenna.radiowaves.left.and.right",
              subtitle: "Pairs directly with your strap over Bluetooth — no WHOOP app, no cloud.") {
