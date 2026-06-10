@@ -713,6 +713,7 @@ private struct ImportStep: View {
     @State private var importTarget: ImportTarget = .whoop
     @State private var fileTypeError: String? = nil
 
+
     var body: some View {
         StepShell(title: "Bring your history",
                   subtitle: "Optional — import now, or continue and return to Data Sources later.") {
@@ -770,14 +771,15 @@ private struct ImportStep: View {
                 }
             }
         }
-        // allowedContentTypes is .item (catch-all) because UTI-based filtering greys out zip files
-        // that iCloud Drive / Files doesn't tag with a recognised UTI. Extension is validated below.
+        // macOS: .fileImporter works correctly with UTI filtering.
+        // iOS: skipped — presentImporter() calls DocumentPicker.importFile([.data]) directly.
         .fileImporter(
             isPresented: $showingImporter,
             allowedContentTypes: importTarget.allowedContentTypes,
             allowsMultipleSelection: false
         ) { result in
-            handleImportResult(result, for: importTarget)
+            guard case .success(let urls) = result, let url = urls.first else { return }
+            handlePickedURL(url, for: importTarget)
         }
         .alert("Wrong file type", isPresented: .init(
             get: { fileTypeError != nil },
@@ -807,11 +809,20 @@ private struct ImportStep: View {
 
     private func presentImporter(_ target: ImportTarget) {
         importTarget = target
+        #if os(iOS)
+        // SwiftUI .fileImporter applies a broken UTI-filtering layer on iOS (zips stay greyed out
+        // even with [.item]). Call UIDocumentPickerViewController directly via DocumentPicker —
+        // the same UIKit path used by the DB-backup picker, which is confirmed to show all files.
+        Task { @MainActor in
+            guard let url = await DocumentPicker.importFile([.data]) else { return }
+            handlePickedURL(url, for: target)
+        }
+        #else
         showingImporter = true
+        #endif
     }
 
-    private func handleImportResult(_ result: Result<[URL], Error>, for target: ImportTarget) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
+    private func handlePickedURL(_ url: URL, for target: ImportTarget) {
         guard target.isValidFile(url) else {
             fileTypeError = "Please choose a \(target.validExtensionHint) file."
             return
@@ -828,9 +839,14 @@ private struct ImportStep: View {
         case whoop
         case appleHealth
 
-        // Accept all items — UTI filtering greys out zip files from iCloud Drive / Files because
-        // the OS doesn't tag them with a recognised archive UTI. Extension is checked after pick.
-        var allowedContentTypes: [UTType] { [.item] }
+        // macOS only — used by .fileImporter, which works correctly on macOS with UTI types.
+        // iOS uses DocumentPicker.importFile([.data]) directly; this property is unused there.
+        var allowedContentTypes: [UTType] {
+            switch self {
+            case .whoop:       return [.zip, .folder]
+            case .appleHealth: return [.zip, .xml, .folder]
+            }
+        }
 
         func isValidFile(_ url: URL) -> Bool {
             let ext = url.pathExtension.lowercased()

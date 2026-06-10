@@ -145,6 +145,7 @@ targets:
         NSBluetoothAlwaysUsageDescription: "NOOP connects directly to your WHOOP strap over Bluetooth to read heart rate, R-R intervals, battery, and sensor data locally on your iPhone. Nothing leaves your device."
         NSHealthShareUsageDescription: "NOOP reads your own Apple Health data on-device to compute recovery, strain, and sleep. Nothing leaves your device."
         NSHealthUpdateUsageDescription: "NOOP writes the metrics it computes from your strap back into Apple Health, on-device and only when you allow it."
+        UIFileSharingEnabled: true
         CFBundleDocumentTypes:
           - CFBundleTypeName: ZIP Archive
             CFBundleTypeRole: Viewer
@@ -208,3 +209,17 @@ targets:
         TARGETED_DEVICE_FAMILY: "1,2"
     dependencies:
       - package: StrandDesign
+
+  NOOPiOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: NOOPiOSUITests
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.noopapp.noop.uitests
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: NOOPiOS
+    dependencies:
+      - target: NOOPiOS
