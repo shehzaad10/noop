@@ -200,6 +200,7 @@ public struct TrendChart: View {
             }
         }
         .frame(height: height)
+        .clipped()
     }
 
     private var averageValue: Double {

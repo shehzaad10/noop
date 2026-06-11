@@ -721,6 +721,7 @@ private struct ImportStep: View {
     @EnvironmentObject private var model: AppModel
     @State private var showingImporter = false
     @State private var importTarget: ImportTarget = .whoop
+    @State private var fileTypeError: String? = nil
 
     var body: some View {
         StepShell(title: "Bring your history",
@@ -779,12 +780,23 @@ private struct ImportStep: View {
                 }
             }
         }
+        // macOS: .fileImporter works correctly with UTI filtering.
+        // iOS: skipped — presentImporter() calls DocumentPicker.importFile([.data]) directly.
         .fileImporter(
             isPresented: $showingImporter,
             allowedContentTypes: importTarget.allowedContentTypes,
             allowsMultipleSelection: false
         ) { result in
-            handleImportResult(result, for: importTarget)
+            guard case .success(let urls) = result, let url = urls.first else { return }
+            handlePickedURL(url, for: importTarget)
+        }
+        .alert("Wrong file type", isPresented: .init(
+            get: { fileTypeError != nil },
+            set: { if !$0 { fileTypeError = nil } }
+        )) {
+            Button("OK", role: .cancel) { fileTypeError = nil }
+        } message: {
+            if let msg = fileTypeError { Text(msg) }
         }
     }
 
@@ -806,11 +818,24 @@ private struct ImportStep: View {
 
     private func presentImporter(_ target: ImportTarget) {
         importTarget = target
+        #if os(iOS)
+        // SwiftUI .fileImporter applies a broken UTI-filtering layer on iOS (zips stay greyed out
+        // even with [.item]). Call UIDocumentPickerViewController directly via DocumentPicker —
+        // the same UIKit path used by the DB-backup picker, which reliably shows all files.
+        Task { @MainActor in
+            guard let url = await DocumentPicker.importFile([.data]) else { return }
+            handlePickedURL(url, for: target)
+        }
+        #else
         showingImporter = true
+        #endif
     }
 
-    private func handleImportResult(_ result: Result<[URL], Error>, for target: ImportTarget) {
-        guard case .success(let urls) = result, let url = urls.first else { return }
+    private func handlePickedURL(_ url: URL, for target: ImportTarget) {
+        guard target.isValidFile(url) else {
+            fileTypeError = "Please choose a \(target.validExtensionHint) file."
+            return
+        }
         switch target {
         case .whoop:
             model.importWhoop(url: url)
@@ -823,12 +848,27 @@ private struct ImportStep: View {
         case whoop
         case appleHealth
 
+        // macOS only — used by .fileImporter, which works correctly on macOS with UTI types.
+        // iOS uses DocumentPicker.importFile([.data]) directly; this property is unused there.
         var allowedContentTypes: [UTType] {
             switch self {
-            case .whoop:
-                return [.zip, .folder]
-            case .appleHealth:
-                return [.zip, .xml, .folder]
+            case .whoop:       return [.zip, .folder]
+            case .appleHealth: return [.zip, .xml, .folder]
+            }
+        }
+
+        func isValidFile(_ url: URL) -> Bool {
+            let ext = url.pathExtension.lowercased()
+            switch self {
+            case .whoop:       return ext == "zip" || url.hasDirectoryPath
+            case .appleHealth: return ext == "zip" || ext == "xml" || url.hasDirectoryPath
+            }
+        }
+
+        var validExtensionHint: String {
+            switch self {
+            case .whoop:       return ".zip"
+            case .appleHealth: return ".zip or .xml"
             }
         }
     }

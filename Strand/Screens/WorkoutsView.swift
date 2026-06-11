@@ -153,6 +153,7 @@ struct WorkoutsView: View {
         }
         .buttonStyle(.bordered)
         .tint(StrandPalette.accent)
+        .fixedSize(horizontal: false, vertical: true)
         .accessibilityLabel("Add a workout")
     }
 
@@ -353,18 +354,31 @@ struct WorkoutsView: View {
                           overline: "Log",
                           trailing: "\(rows.count) total")
             NoopCard(padding: 0) {
-                LazyVStack(spacing: 0) {
-                    sessionHeaderRow
-                    Divider().overlay(StrandPalette.hairline)
-                    ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
-                        sessionRow(row)
-                            .background(idx % 2 == 1
-                                        ? StrandPalette.surfaceInset.opacity(0.4)
-                                        : Color.clear)
-                        if idx != rows.count - 1 {
-                            Divider().overlay(StrandPalette.hairline.opacity(0.5))
-                        }
-                    }
+                #if os(iOS)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    sessionsTableStack(rows: rows)
+                        .frame(minWidth: ColWidth.date + ColWidth.sport + ColWidth.duration +
+                               ColWidth.hr + ColWidth.kcal + ColWidth.dist + ColWidth.source +
+                               NoopMetrics.cardPadding * 2)
+                }
+                #else
+                sessionsTableStack(rows: rows)
+                #endif
+            }
+        }
+    }
+
+    private func sessionsTableStack(rows: [WorkoutRow]) -> some View {
+        LazyVStack(spacing: 0) {
+            sessionHeaderRow
+            Divider().overlay(StrandPalette.hairline)
+            ForEach(Array(rows.enumerated()), id: \.offset) { idx, row in
+                sessionRow(row)
+                    .background(idx % 2 == 1
+                                ? StrandPalette.surfaceInset.opacity(0.4)
+                                : Color.clear)
+                if idx != rows.count - 1 {
+                    Divider().overlay(StrandPalette.hairline.opacity(0.5))
                 }
             }
         }
